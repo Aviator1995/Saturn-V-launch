@@ -1,0 +1,37 @@
+function [ rho_alt, T_alt, P_alt ] = altitude_properties( H )
+% Computing atmospheric air density, temparature & pressure for sls & alt
+% in the Troposphere & Tropopause (i.e. Max ceiling 25Km)
+
+%% ALTITUDE PROPERTIES (International Standard Atmosphere Model)
+%%%%%%%%%%%%%%%%%% Thermodynamic properties 
+gamma = 1.4;     % Speific heat ratio (air)
+Rg    = 287;     % gas constant(J/Kg.K)
+rho_0 = 1.225;   % Density at sea level (Kg/m3)    (ISA)
+T_sls = 288.19;  % Temparature at sea level (K)    (ISA)
+P_sls = 101.325; % Pressure sea level (kPa)        (ISA)
+
+% Altitude conditions
+h      = H*1000; % Altitude (m)
+
+if H <= 11,      % Atmosphere - Troposhpere 
+    
+  T_alt   = 288.15-0.0065.*h;        % Temp. (K) @ altitude
+  theta   = 1-(2.2558e-5.*h);        % Temparature lapse ratio
+  del = (1-((2.2558e-5).*h)).^5.2558;% Hydrostatic equation (pressure var.)
+  P_alt   = P_sls*del;               % Pressure @ altitude (kPa)
+  sig     = del/theta;               % density lapse ratio
+  rho_alt = sig*rho_0;               % density at altitude (kg/m3)
+    
+elseif H > 11,   % Atmosphere - Tropopause 
+    
+  T_alt   = 216.65;                          % Temp. (K) in tropopause 
+  theta   = 0.7519;                          % density lapse ratio
+  del = 0.22336.*exp(1.7346-(1.5769e-4.*h)); % pressure lapse ratio (dP/dh)
+  P_alt   = P_sls*del;                       % Pressure @ altitude (kPa)
+  sig     = del/theta;                       % density lapse ratio
+  rho_alt = sig*rho_0;                       % density at altitude (kg/m3)
+  
+end
+
+end
+
