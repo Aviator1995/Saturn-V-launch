@@ -1,0 +1,121 @@
+clear; clc
+% Launch trajectory of 1st and 2nd stage burn 
+% Saturn V design parameters
+T       = 535;               % Total burn time for S-IC & S-II          (s)
+M_0     = 2.8e6;             % Launch Mass of Saturn V                 (kg) 
+M_01    = 6.34480e5 - 130e3; % Mass of rocket after initial separation (kg)
+m_dot_1 = 12.89e3;           % Mass flow rate of S-IC propellant     (kg/s)
+m_dot_2 = 5.325;             % Mass flow rate of S-II propellant     (kg/s) 
+A       = 12.75;             % Reference area, S-IC & S-II area        (m2)
+CD      = 0.515;             % Aerodynamic Drag Coefficient
+Tb_1    = 168;               % S-IC burnout time                        (s)
+Tb_2    = Tb_1+367;          % Time at S-II engine Cutoff               (s)
+
+% Atmospheric parameters
+h_0   = 7.5e3;     % Scale height of atmosphere             (m)
+rho_0 = 1.225;     % Air density at SLS                 (kg/m3)
+g_0   = 9.81;      % Acceleration due to gravity SLS     (m/s2)
+RE    = 6378e3;    % Radius of Earth                       (km)
+
+i      = 1;        % Initial iteration No.
+j      = 1;        % Initial iteration for Prograde.
+del_t  = 0.1;      % time step const.
+memory = T/del_t;  % length of data array
+
+% Set up parameter arrays         Initial Conditions
+t     = zeros(memory,1);          t(1)     = 0;
+h     = zeros(memory,1);          h(1)     = 0;
+x     = zeros(memory,1);          x(1)     = 0;
+V     = zeros(memory,1);          V(1)     = 0;
+gam   = zeros(memory,1);          gam(1)   = 90;
+V_dot = zeros(memory,1);          V_dot(1) = 0;
+A_n   = zeros(memory,1);          A_n(1)   = 0;
+V_y   = zeros(memory,1);          V_y(1)   = 0;
+V_x   = zeros(memory,1);          V_x(1)   = 0;
+q     = zeros(memory,1);          q(1)     = 0;
+
+% Acceleration normal to trajectory (dgam/dt) (Rate of change of FPA)
+while j <= (T/del_t)+1,
+if j <= (25/del_t)+1,           A_n(j) = 0;      j=j+1; end
+% Initial pitch correction T=25s
+if j >  (25/del_t)+1,           A_n(j) = -0.151; j=j+1; end 
+% Centre Engine S-IC cutoff
+if j >  (100/del_t)+1, j = j-1; A_n(j) = -0.25;  j=j+1; end 
+% Begin tilt arrest, S-IC Separation and S-II ignition
+if j >  (168/del_t)+1, j = j-1; A_n(j) = -0.0;   j=j+1; end 
+% S-II aft interstage jettison, then continue until S-11 cutout @ T=535s
+if j >  (210/del_t)+1, j = j-1; A_n(j) = -0.153; j=j+1; end
+end
+
+while i<(T/del_t)+1,
+    
+    % Rocket mass as function of time (kg) for S-IC & S-II respectively
+    if t(i) < Tb_1,
+        M_t = M_0 - ( m_dot_1 .* t(i) ); 
+    elseif t(i) >= Tb_1,
+        M_t = M_01 - ( m_dot_2 .* (t(i)-160) );
+    end
+    % Air Density as function of altitude (kg/m3)
+    rho_h = rho_0.*exp(-h(i)./h_0);
+    % acc. due to gravity as function of altitude
+    g_h = g_0./((1+(h(i)./RE)).^2); 
+    
+% Equations of Motion accounting for earth curvature. Coupled differential
+% equations describing gravity-turn ascent. Using Forward Euler Integration
+% FDM numerical scheme.
+
+    % Acceleration tangential to trajectory (dV/dt)
+    if t(i) < Tb_1,
+        if i >= (135/del_t)+1, % Center S-IC engine cutoff @ T = 135s
+        V_dot(i+1) = ((((7.2e6*4)-(0.5.*rho_h.*(V(i).^2)...
+            .*A.*CD))./M_t) - g_h*sind(gam(i)));
+    elseif i<(135 /del_t)+1, % S-IC (First stage ignition)
+        V_dot(i+1) = ((((7.2e6*5)-(0.5.*rho_h.*(V(i).^2)...
+            .*A.*CD))./M_t) - g_h*sind(gam(i)));
+        end
+    elseif t(i) >= Tb_1, % J-2, S-II (second stage ignition)
+        V_dot(i+1) = ((((4.4e3*5)-(0.5.*rho_h.*(V(i).^2)...
+            .*A.*CD))./M_t) - g_h*sind(gam(i))); 
+    end 
+    
+    % Dynamic pressure (Pa)
+    q(i+1) = 0.5.*rho_h.*(V(i).^2);
+    % Determine magnitude of velocity vector
+    V(i+1) = (V_dot(i+1).*del_t)+V(i);  
+    % Flight path angle
+    gam(i+1) = (A_n(i+1).* del_t) + gam(i);
+    % Components of Velocity vector (V_y = dh/dt) - vertical
+    V_y(i+1) = (V(i).*sind(gam(i+1)));
+    % Altitude gain (dh/dt*del_t + h_i)
+    h(i+1) = (V_y(i+1).* del_t)+h(i);
+    % Horizontal Velociy (V_x = dx/dt)
+    V_x(i+1) = ((RE./(RE+h(i))).*V(i).*cosd(gam(i)));
+    % Horizontal distance travelled (dx/dt*del_t + x_i)
+    x(i+1)   = (V_x(i+1).*del_t)+x(i);
+    
+    t(i+1)   = t(i) + del_t;   % Inlfight time
+    i=i+1;
+
+end
+
+h = h./1000; x = x/1000; % Convert distance to km
+
+subplot(2,3,1), plot(t, h);    grid minor; xlim([0 T]);
+title('dh/dt-Varitation of altitude with time'); 
+xlabel('time (s)'); ylabel('Altitude (km)');
+subplot(2,3,2), plot(x,h);     grid minor; xlim([0 x(i)]);
+title('Saturn V Launch Trajectory'); 
+xlabel('Downrange distance (km)'); ylabel('Altitude (km)');
+subplot(2,3,3), plot(t,V_dot); grid minor; xlim([0 T]);
+title('dV/dt-Tangential acceleration w.r.t time'); 
+xlabel('time (s)'); ylabel('Acceleration (m/s^2)');
+subplot(2,3,4), plot(t,gam);   grid minor; xlim([0 T]);
+title('d\gamma /dt-Varitation of FPA with time'); 
+xlabel('time (s)'); ylabel('Flight path angle \gamma ,deg)');
+subplot(2,3,5), plot(h,q);     grid minor;
+title('Dynamic pressure variation'); 
+xlabel('Altitude (km)'); ylabel('Q, dynamic pressure, Pa');
+subplot(2,3,6), plot(t,V_y);   grid minor; xlim([0 T])
+title('dh/dt - Ascent Velocity'); 
+xlabel('time (s)'); ylabel('dh/dt (m/s)');
+
