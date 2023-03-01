@@ -1,0 +1,78 @@
+clear; clc
+
+% Input command
+prompt = 'Input Flight Altitude (ft):  FL '; FL = input(prompt);
+prompt = 'Flight Mach Number: M ';           Ma = input(prompt);
+FL = (FL*100)/3280.84; % conversion to S.I. (km)
+
+%% Atmospheric Conditions (At max Q, Saturn V ~ FL450)
+[ rho_alt, T_alt, P_alt ] = altitude_properties( FL );
+
+% Est. Dirichlet boundary condition - CFD analysis
+Pa = P_alt*1000; % Ambient Air Pressure   (Pa)
+disp(['Altitude air pressure: '   ,num2str(Pa), ' Pa']);
+Ta = T_alt;      % Ambient Air Temparature (K)
+disp(['Altitude air temparature: ',num2str(Ta),  ' K']);
+
+% F-1 liquid-fuel rocket design parameters
+Pc = 7e6;        % Chamber Pressure   (Pa)
+Tc = 3033.15;    % Chamber Temparature (K)
+De = 3.7;        % exit diameter       (m)
+AR = 16;         % Nozzle Exit-throat ratio
+Ae = (pi * De^2)/4; At = Ae/AR; % Geometric Areas (m2)
+
+% Thermodynamic properties 
+% Specific heat ratio for combustion of gaseous oxygen/hydrocarbon fuel
+gam = 1.2;                % cp/cv 
+gam_air = 1.4;            % Specific heat ratio for air
+R   = 287;                % Gas constant (Ideal gas) (J/Kg.K)
+a   = sqrt(gam_air*R*Ta); % Speed of sound at ALT    (m/s)
+
+% Calc critical flow conditions (where Mach_t >= 1) @ nozzle convergence
+Tt = Tc * ( 1/(1+((gam-1)/2)) );                    % gas temparature (K)
+Pt = Pc * ( ( 1 + ((gam-1)/2) ) ^ -(gam/(gam-1)) ); % gas pressure   (Pa)
+
+% Mass flow rate (kg/s)
+m_dot = ((At*Pt)/sqrt(Tt)) * sqrt(gam/R) * ( ((gam+1)/2)^-...
+    ((gam+1)/(2*(gam-1))) );
+
+%% Isentropic expansion relations to compute propulsion exhaust parameters
+% Iterative procedure to computing exit Mach to satisfy Area ratio (AR)
+
+AR_1      = zeros(2,2); % Col 1-Area Ratio; Col 2-Mach (Set-up iter matrix)
+AR_1(1,2) = 1;          % Initial Condition            (Mach_exit >= 1)
+i         = 1;          % Iteration No.
+SF        = 0.001;      % Mach Increment
+e         = 1+(1e-4);   % Tolerance Condition
+err       = e+1;        % Iteration tol.
+
+while err > e, 
+    
+    AR_1(i,1) = ( ((gam+1)./2).^-((gam+1)./(2.*(gam-1))) ) .* ...
+        (( 1+ (((gam-1)./2).*(AR_1(i,2).^2))) .^ ( (gam+1)./(2.*...
+        (gam-1)) )) .* (1./AR_1(i,2));
+    
+          err = AR./AR_1(i,1);
+    
+            i = i+1;
+    AR_1(i,2) = AR_1(i-1,2) + SF;
+end
+
+Me  = AR_1(i-1,2);                                  % Exit Mach        (M)
+Te  = Tt * ( ( 1+ ( ((gam-1)/2)*(Me^2) ) )^-1 );    % Exit Temparature (K)
+Pe  = Pt*((1+(((gam-1)/2)*(Me^2)))^(-gam/(gam-1))); % Exit Pressure   (Pa)
+Ve  = Me * sqrt(gam * R * Te);                      % Exit Velocity  (m/s)
+F   = (m_dot*(Ve+(Ma*a))) + ( (Pe-Pa)*Ae );         % Thrust output    (N)
+P   = F * (Ve - (Ma*a));                            % Power Output     (W)
+Isp = F./(m_dot.*9.81);                             % Specific Impulse (s) 
+
+disp(['Mass flow rate: '      ,num2str(m_dot), ' kg/s']);
+disp(['Critical Pressure: '   ,num2str(Pt)       ' Pa']);
+disp(['Critical Temparature: ',num2str(Tt)        ' K']);
+disp(['Exit Mach: M '         ,num2str(Me)            ]);
+disp(['Exhaust Temparature: ' ,num2str(Te),       ' K']);
+disp(['Exhaust Pressure: '    ,num2str(Pe),      ' Pa']);
+disp(['Exhaust Velocity: '    ,num2str(Ve),     ' m/s']);
+disp(['Thrust Output: '       ,num2str(F),        ' N']);
+disp(['Power Output: '        ,num2str(P),        ' W']);
+disp(['Specific Impulse: '    ,num2str(Isp),      ' s']);
